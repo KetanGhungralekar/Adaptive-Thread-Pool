@@ -105,7 +105,9 @@ void append_csv(const std::string& csv_file, const atp::BenchmarkResult& r, size
 }
 
 atp::BenchmarkResult run_single_fixed_trial(atp::WorkloadType workload, size_t workers, double scale = 1.0) {
-    atp::ThreadPool pool(workers);
+    // Fixed sweeps must honor the requested worker count, including values above
+    // ThreadPool's default dynamic-pool ceiling of 32.
+    atp::ThreadPool pool(workers, 1, workers);
     atp::BenchmarkResult res = atp::execute_workload(workload, pool, "fixed", scale);
     pool.shutdown();
     return res;

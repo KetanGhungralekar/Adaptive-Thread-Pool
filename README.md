@@ -152,6 +152,34 @@ Fixed           Phase-changing              20     2.643 [2.62-2.67]            
 3. **Dynamic Response (19 Resizes):**
    - The momentum accelerator adjusted worker count aggressively during the Wait phase, surging past the 10-core ceiling to absorb sleeping tasks, then contracting back as compute resumed.
 
+### 4.3 Large-Scale Phase-Changing Runs (180,000 and 360,000 Tasks)
+
+To test whether the adaptive pool benefits from longer runs, the phase-changing workload was scaled to 180,000 tasks (10x the 18,000-task run) and 360,000 tasks (20x). Each configuration ran three trials. The machine reported 10 hardware threads. Fixed pools were tested at 10, 20, 32, 48, and 64 workers for 180,000 tasks, then at 10, 32, and 64 for 360,000 tasks. Adaptive runs started at 10 workers with bounds `[1..64]` and a 100 ms measurement window. Trial-level data is in `benchmark_results_large.csv`.
+
+| Tasks | Mode | Workers | Median time (s) [min–max] | Throughput (tasks/s) | Median P99 latency (ms) | Median resizes |
+|---:|---|---:|---:|---:|---:|---:|
+| 180,000 | Fixed | 10 | 31.987 [31.981–32.005] | 5,627.3 | 31,682.36 | 0 |
+| 180,000 | Fixed | 20 | 24.529 [24.518–24.565] | 7,338.2 | 24,243.47 | 0 |
+| 180,000 | Fixed | 32 | 21.787 [21.774–21.914] | 8,261.9 | 21,492.09 | 0 |
+| 180,000 | Fixed | 48 | 20.279 [20.275–20.293] | 8,876.2 | 19,944.84 | 0 |
+| 180,000 | Fixed | 64 | 19.505 [19.413–19.703] | 9,228.2 | 19,105.72 | 0 |
+| 180,000 | Adaptive | 1–64 (start 10) | 21.085 [20.101–21.434] | 8,536.7 | 20,766.39 | 109 |
+| 360,000 | Fixed | 10 | 64.102 [64.039–64.503] | 5,616.1 | 63,518.93 | 0 |
+| 360,000 | Fixed | 32 | 43.877 [43.631–43.954] | 8,204.8 | 43,188.10 | 0 |
+| 360,000 | Fixed | 64 | 39.251 [39.160–39.401] | 9,171.9 | 38,585.65 | 0 |
+| 360,000 | Adaptive | 1–64 (start 10) | 40.678 [39.888–42.087] | 8,849.9 | 40,129.39 | 204 |
+
+The adaptive pool beat fixed 10, 20, and 32 workers at 180,000 tasks, but fixed 48 and 64 were faster. At 360,000 tasks, adaptive beat fixed 32 by 7.3% in median wall time and came within 3.6% of fixed 64, which remained the fastest tested configuration. The fixed 64-worker pool is a strong hindsight baseline for this exact trace; these results show adaptive scaling closing much of the gap while changing worker counts 204 times, not that it beats every fixed configuration. The wider trial spread for adaptive runs also reflects their sensitivity to when worker changes align with the workload phases.
+
+The larger fixed counts exposed a benchmark issue: `ThreadPool` defaults to a dynamic maximum of 32 workers, so earlier fixed trials requesting more than 32 were silently clamped. The fixed benchmark now sets its upper bound to the requested count, and these large-scale results were collected after that correction.
+
+Reproduce the runs with:
+
+```bash
+./build/benchmark --mode compare --workload phase --scale 20 --trials 3 --workers-list 10,20,32,48,64 --min-workers 1 --max-workers 64 --initial-workers 10 --window-ms 100 --csv benchmark_results_large.csv
+./build/benchmark --mode compare --workload phase --scale 40 --trials 3 --workers-list 10,32,64 --min-workers 1 --max-workers 64 --initial-workers 10 --window-ms 100 --csv benchmark_results_large.csv
+```
+
 ---
 
 ## 5. Key Engineering Insights
